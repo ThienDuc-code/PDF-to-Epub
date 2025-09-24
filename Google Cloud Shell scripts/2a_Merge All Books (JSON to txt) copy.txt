@@ -1,0 +1,58 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+DATE_PREFIX="2025-09-24"
+BATCH_ROOT="gs://pdf-ocr-books/docai-output/${DATE_PREFIX}/batch_clean"
+MERGED_DIR="gs://pdf-ocr-books/docai-output/${DATE_PREFIX}/merged_txt"
+TMP_DIR="/tmp/docai_merge_${DATE_PREFIX}"
+mkdir -p "${TMP_DIR}"
+
+# jq needed to extract .text
+command -v jq >/dev/null 2>&1 || { sudo apt-get update -y && sudo apt-get install -y jq; }
+
+# Ensure merged_txt exists (create tiny marker if not)
+gsutil -q ls "${MERGED_DIR}" >/dev/null 2>&1 || gsutil -q cp /dev/null "${MERGED_DIR}/.init" || true
+
+merge_one () {
+  local STEM="$1"                                 # e.g., HOL_Vol1
+  local TMP_TXT="${TMP_DIR}/${STEM}_ocr.txt"
+  local TMP_TXT_CLEAN="${TMP_DIR}/${STEM}_ocr_clean.txt"
+
+  # Collect ALL page JSONs for this stem anywhere under batch_clean/
+  mapfile -t OBJECTS < <(gsutil ls -r "${BATCH_ROOT}/**/${STEM}-*.json" 2>/dev/null | sort -V)
+  local TOTAL=${#OBJECTS[@]}
+  if (( TOTAL == 0 )); then
+    echo "==> ${STEM}: no JSON pages found yet, skipping."
+    return 0
+  fi
+
+  echo "==> ${STEM}: merging ${TOTAL} pages…"
+  : > "${TMP_TXT}"
+
+  local n=0
+  for OBJ in "${OBJECTS[@]}"; do
+    n=$((n+1))
+    printf "\r    %s  %d/%d" "${STEM}" "${n}" "${TOTAL}"
+    gsutil cat "${OBJ}" | jq -r '.text // empty' >> "${TMP_TXT}"
+  done
+  echo
+
+  # Trim leading empties, upload, then clean temp
+  awk 'NF{p=1}p' "${TMP_TXT}" > "${TMP_TXT_CLEAN}"
+  gsutil cp "${TMP_TXT_CLEAN}" "${MERGED_DIR}/${STEM}_ocr.txt"
+  echo "    → ${MERGED_DIR}/${STEM}_ocr.txt"
+  rm -f "${TMP_TXT}" "${TMP_TXT_CLEAN}"
+
+  # Show /tmp usage (optional)
+  df -h /tmp | awk 'NR==1 || /\/tmp$/'
+  echo
+}
+
+for i in $(seq 1 12); do
+  merge_one "HOL_Vol${i}"
+done
+
+# Remove marker if we created it
+gsutil -q rm "${MERGED_DIR}/.init" || true
+
+echo "All done. Merged TXTs are in: ${MERGED_DIR}"
