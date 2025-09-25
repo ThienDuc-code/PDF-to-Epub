@@ -305,7 +305,7 @@ cp "$TEXT_FILE" "$TEMP_DIR/input.txt"
 
 # Step 5a: Clean up OCR text
 print_status "Step 5a: Cleaning up OCR text..."
-python3 text-processing/Step1_ocr_cleanup_v6.py "$TEMP_DIR/input.txt" "$TEMP_DIR/step1_output.txt"
+python3 text-processing/01_ocr_cleanup.py "$TEMP_DIR/input.txt" "$TEMP_DIR/step1_output.txt"
 
 if [ $? -ne 0 ]; then
     print_error "Text cleanup failed"
@@ -314,7 +314,7 @@ fi
 
 # Step 5b: Format the text
 print_status "Step 5b: Formatting text..."
-python3 text-processing/Step2_formatting1_v2.py "$TEMP_DIR/step1_output.txt" "$TEMP_DIR/step2_output.txt"
+python3 text-processing/02_formatting1_v2.py "$TEMP_DIR/step1_output.txt" "$TEMP_DIR/step2_output.txt"
 
 if [ $? -ne 0 ]; then
     print_error "Text formatting failed"
@@ -323,7 +323,7 @@ fi
 
 # Step 5c: Further formatting
 print_status "Step 5c: Additional formatting..."
-python3 text-processing/step3_formating2_v2.py "$TEMP_DIR/step2_output.txt" "$TEMP_DIR/step3_output.txt"
+python3 text-processing/03_formatting2_v2.py "$TEMP_DIR/step2_output.txt" "$TEMP_DIR/step3_output.txt"
 
 if [ $? -ne 0 ]; then
     print_error "Additional formatting failed"
@@ -453,7 +453,7 @@ print('Template EPUB created: $TEMPLATE_EPUB')
 fi
 
 # Run EPUB creation
-python3 text-processing/Step4_create_epub.py "$TEMP_DIR/step3_output.txt" "$TEMPLATE_EPUB" "$EPUB_FILENAME"
+python3 text-processing/04_create_epub.py "$TEMP_DIR/step3_output.txt" "$TEMPLATE_EPUB" "$EPUB_FILENAME"
 
 if [ $? -ne 0 ]; then
     print_error "EPUB creation failed"

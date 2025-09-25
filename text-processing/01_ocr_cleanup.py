@@ -3,21 +3,13 @@
 import argparse, subprocess, sys, re, pathlib, json, os
 
 def _apply_french_utf8_latin1_fixes(text: str) -> str:
-    """
-    Fix common UTF-8 -> Latin-1 mojibake for French accented letters,
-    only when the artifact is part of a word (adjacent to at least
-    one Unicode word character). This avoids changing standalone artifacts
-    from footnotes or layout debris.
-    """
     mapping = {
-        # Lowercase
         "Ã©": "é", "Ã¨": "è", "Ãª": "ê", "Ã«": "ë",
         "Ã ": "à", "Ã¢": "â", "Ã¤": "ä",
         "Ã®": "î", "Ã¯": "ï",
         "Ã´": "ô", "Ã¶": "ö",
         "Ã¹": "ù", "Ã»": "û", "Ã¼": "ü",
         "Ã§": "ç",
-        # Uppercase
         "Ã‰": "É", "Ãˆ": "È", "ÃŠ": "Ê", "Ã‹": "Ë",
         "Ã€": "À", "Ã‚": "Â", "Ã„": "Ä",
         "ÃŒ": "Ì", "ÃŽ": "Î", "Ã": "Ï",
@@ -25,9 +17,6 @@ def _apply_french_utf8_latin1_fixes(text: str) -> str:
         "Ã™": "Ù", "Ã›": "Û", "Ãœ": "Ü",
         "Ã‡": "Ç",
     }
-
-    # For each mojibake sequence, only replace when it borders a word char.
-    # Pattern:   (?<=\w)BAD | BAD(?=\w)
     for bad, good in mapping.items():
         pat = re.compile(rf"(?:(?<=\w){re.escape(bad)}|{re.escape(bad)}(?=\w))", flags=re.UNICODE)
         text = pat.sub(good, text)
@@ -72,13 +61,11 @@ dst = dst_path.read_text(encoding="utf-8", errors="ignore")
 had_chap_I_in_src = re.search(r"(?m)^\s*CHAPTER\s+I\s*$", src) is not None
 has_chap_I_in_dst = re.search(r"(?m)^\s*CHAPTER\s+I\s*$", dst) is not None
 if had_chap_I_in_src and not has_chap_I_in_dst:
-    # Insert CHAPTER I before CHAPTER II if present; else at start.
     if re.search(r"(?m)^\s*CHAPTER\s+II\s*$", dst):
         dst = re.sub(r"(?m)^(?=\s*CHAPTER\s+II\s*$)", "CHAPTER I\n\n", dst, count=1)
     else:
         dst = "CHAPTER I\n\n" + dst
     dst_path.write_text(dst, encoding="utf-8")
-    # Append a note to the log if provided
     if args.log:
         try:
             logp = pathlib.Path(args.log)
@@ -90,14 +77,12 @@ if had_chap_I_in_src and not has_chap_I_in_dst:
 
 print("Wrapped Step1 complete (CHAPTER I preservation).")
 
-
-# Wrapper added in v5 to ensure French mojibake is fixed
-# If the underlying script exposes clean_ocr_text, wrap it; otherwise ignore
 try:
     _original_clean_ocr_text = clean_ocr_text  # type: ignore[name-defined]
     def clean_ocr_text(text):  # type: ignore[func-assign]
         text = _apply_french_utf8_latin1_fixes(text)
         return _original_clean_ocr_text(text)
 except Exception:
-    # Not all Step1 variants define clean_ocr_text; it's optional.
     pass
+
+
