@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/usr/bin/env bash
 
 # macOS Setup Script for PDF to EPUB Project
 # This script sets up the complete environment for Google Cloud Document AI OCR processing
@@ -156,6 +156,36 @@ else
     print_success "Created .env file from template"
 fi
 
+# Load existing .env values to reuse as defaults
+if [ -f ".env" ]; then
+    # export variables from .env without printing
+    set -a
+    # shellcheck disable=SC1091
+    . ./.env
+    set +a
+fi
+
+# Derive sensible defaults from existing .env if available
+DEFAULT_PROJECT_ID="${GOOGLE_CLOUD_PROJECT_ID:-}"
+DEFAULT_PROCESSOR_VERSION="${GOOGLE_CLOUD_PROCESSOR_VERSION:-}"
+# Extract processor ID from version path if present
+DEFAULT_PROCESSOR_ID=""
+if [ -n "$DEFAULT_PROCESSOR_VERSION" ]; then
+    DEFAULT_PROCESSOR_ID=$(printf "%s\n" "$DEFAULT_PROCESSOR_VERSION" | sed -n 's#.*/processors/\([^/]*\)/.*#\1#p')
+fi
+
+# Location default
+DEFAULT_LOCATION="${GOOGLE_CLOUD_LOCATION:-eu}"
+
+# Prefer bucket from INPUT_PREFIX, fallback to OUTPUT_PREFIX
+DEFAULT_BUCKET_NAME=""
+if [ -n "${INPUT_PREFIX:-}" ]; then
+    DEFAULT_BUCKET_NAME=$(printf "%s\n" "$INPUT_PREFIX" | sed -n 's#gs://\([^/]*\).*#\1#p')
+fi
+if [ -z "$DEFAULT_BUCKET_NAME" ] && [ -n "${OUTPUT_PREFIX:-}" ]; then
+    DEFAULT_BUCKET_NAME=$(printf "%s\n" "$OUTPUT_PREFIX" | sed -n 's#gs://\([^/]*\).*#\1#p')
+fi
+
 # Step 6: Configure Google Cloud
 print_status "Configuring Google Cloud..."
 
@@ -178,7 +208,8 @@ print_status "Available Google Cloud projects:"
 gcloud projects list --format="table(projectId,name)"
 
 echo
-prompt_input "Enter your Google Cloud Project ID" "" "PROJECT_ID"
+# Use existing project id as default if present
+prompt_input "Enter your Google Cloud Project ID" "$DEFAULT_PROJECT_ID" "PROJECT_ID"
 
 # Set the project
 gcloud config set project "$PROJECT_ID"
@@ -205,19 +236,22 @@ fi
 print_warning "Document AI processors must be created through the Google Cloud Console."
 print_status "Please follow these steps:"
 echo
-echo "1. Go to: https://console.cloud.google.com/ai/document-ai/processors"
-echo "2. Click 'Create Processor'"
-echo "3. Select 'OCR Processor'"
+echo "1. Go to: https://console.cloud.google.com/ai/document-ai/processor-library"
+echo "2. Click 'Document OCR'"
+echo "3. Give it a name like 'PDF-OCR-Processor'"
 echo "4. Choose location: 'eu' (Europe)"
-echo "5. Give it a name like 'PDF-OCR-Processor'"
-echo "6. Click 'Create'"
+echo "5. Click 'Create'"
 echo
 echo "After creating the processor, you'll need to:"
 echo "- Copy the processor ID from the URL or processor details"
 echo "- Update your .env file with the correct processor version"
 echo
 
-prompt_input "Enter your Document AI Processor ID (found in the processor URL)" "" "PROCESSOR_ID"
+prompt_input "Enter your Document AI Processor ID (found in the processor URL)" "$DEFAULT_PROCESSOR_ID" "PROCESSOR_ID"
+
+# Location selection (default to existing or eu)
+prompt_input "Enter your Document AI Location (eu/us)" "$DEFAULT_LOCATION" "LOCATION"
+GOOGLE_CLOUD_LOCATION="$LOCATION"
 
 if [ -z "$PROCESSOR_ID" ]; then
     print_error "Processor ID is required. Please create a processor in the Google Cloud Console first."
@@ -226,7 +260,7 @@ fi
 
 # Get project number for the processor version
 PROJECT_NUMBER=$(gcloud projects describe "$PROJECT_ID" --format="value(projectNumber)")
-PROCESSOR_VERSION="projects/$PROJECT_NUMBER/locations/eu/processors/$PROCESSOR_ID/processorVersions/pretrained-ocr-v2.0-2023-06-02"
+PROCESSOR_VERSION="projects/$PROJECT_NUMBER/locations/$GOOGLE_CLOUD_LOCATION/processors/$PROCESSOR_ID/processorVersions/pretrained-ocr-v2.0-2023-06-02"
 
 print_success "Using processor: $PROCESSOR_ID"
 print_status "Processor version: $PROCESSOR_VERSION"
@@ -234,7 +268,7 @@ print_status "Processor version: $PROCESSOR_VERSION"
 # Step 11: Configure storage bucket
 print_status "Setting up Google Cloud Storage..."
 
-prompt_input "Enter your bucket name (will be created if it doesn't exist)" "" "BUCKET_NAME"
+prompt_input "Enter your bucket name (will be created if it doesn't exist)" "$DEFAULT_BUCKET_NAME" "BUCKET_NAME"
 
 # Check if bucket exists
 if gsutil ls -b "gs://$BUCKET_NAME" >/dev/null 2>&1; then
@@ -248,19 +282,58 @@ fi
 # Step 12: Configure .env file with user inputs
 print_status "Updating .env file with your configuration..."
 
-# Update .env file
-sed -i '' "s/your-project-id-here/$PROJECT_ID/g" .env
-sed -i '' "s/YOUR_PROJECT_NUMBER/$PROJECT_NUMBER/g" .env
-sed -i '' "s/YOUR_PROCESSOR_ID/$PROCESSOR_ID/g" .env
-sed -i '' "s/YOUR_VERSION/pretrained-ocr-v2.0-2023-06-02/g" .env
-sed -i '' "s/your-bucket-name/$BUCKET_NAME/g" .env
+# Update .env file only where placeholders still exist
+# Project ID
+if grep -q "^GOOGLE_CLOUD_PROJECT_ID=your-project-id-here" .env; then
+    sed -i '' "s/^GOOGLE_CLOUD_PROJECT_ID=.*/GOOGLE_CLOUD_PROJECT_ID=$PROJECT_ID/" .env
+else
+    print_status "GOOGLE_CLOUD_PROJECT_ID already set; leaving as-is"
+fi
 
-# Set up default paths
-INPUT_PREFIX="gs://$BUCKET_NAME/pdfs"
-OUTPUT_PREFIX="gs://$BUCKET_NAME/docai-output"
+# Project Number placeholder (used in processor version path)
+if grep -q "YOUR_PROJECT_NUMBER" .env; then
+    sed -i '' "s/YOUR_PROJECT_NUMBER/$PROJECT_NUMBER/g" .env
+fi
 
-sed -i '' "s|gs://your-bucket-name/your-pdf-folder|$INPUT_PREFIX|g" .env
-sed -i '' "s|gs://your-bucket-name/docai-output|$OUTPUT_PREFIX|g" .env
+# Processor ID placeholder
+if grep -q "YOUR_PROCESSOR_ID" .env; then
+    sed -i '' "s/YOUR_PROCESSOR_ID/$PROCESSOR_ID/g" .env
+fi
+
+# Processor version alias placeholder
+if grep -q "YOUR_VERSION" .env; then
+    sed -i '' "s/YOUR_VERSION/pretrained-ocr-v2.0-2023-06-02/g" .env
+fi
+
+# Bucket name placeholder
+if grep -q "your-bucket-name" .env; then
+    sed -i '' "s/your-bucket-name/$BUCKET_NAME/g" .env
+fi
+
+# Location value
+if grep -q "^GOOGLE_CLOUD_LOCATION=" .env; then
+    # If it's placeholder or empty, set it; otherwise leave as-is
+    if grep -q "^GOOGLE_CLOUD_LOCATION=eu$" .env || grep -q "^GOOGLE_CLOUD_LOCATION=$" .env; then
+        sed -i '' "s/^GOOGLE_CLOUD_LOCATION=.*/GOOGLE_CLOUD_LOCATION=$GOOGLE_CLOUD_LOCATION/" .env
+    fi
+else
+    echo "GOOGLE_CLOUD_LOCATION=$GOOGLE_CLOUD_LOCATION" >> .env
+fi
+
+# Processor version: if placeholder path remains, replace entirely
+if grep -q "^GOOGLE_CLOUD_PROCESSOR_VERSION=projects/" .env; then
+    sed -i '' "s#^GOOGLE_CLOUD_PROCESSOR_VERSION=.*#GOOGLE_CLOUD_PROCESSOR_VERSION=$PROCESSOR_VERSION#" .env
+fi
+
+# Paths: only replace template paths if still present
+if grep -q "^INPUT_PREFIX=gs://your-bucket-name/your-pdf-folder" .env; then
+    INPUT_PREFIX="gs://$BUCKET_NAME/pdfs"
+    sed -i '' "s|^INPUT_PREFIX=.*|INPUT_PREFIX=$INPUT_PREFIX|" .env
+fi
+if grep -q "^OUTPUT_PREFIX=gs://your-bucket-name/docai-output" .env; then
+    OUTPUT_PREFIX="gs://$BUCKET_NAME/docai-output"
+    sed -i '' "s|^OUTPUT_PREFIX=.*|OUTPUT_PREFIX=$OUTPUT_PREFIX|" .env
+fi
 
 print_success "Updated .env file with your configuration"
 
@@ -282,10 +355,24 @@ gcloud version >/dev/null 2>&1 && \
     print_success "Google Cloud SDK test passed" || \
     print_error "Google Cloud SDK test failed"
 
-# Test Document AI
-gcloud documentai processors list --location=eu >/dev/null 2>&1 && \
-    print_success "Document AI API test passed" || \
-    print_error "Document AI API test failed"
+# Test Document AI via REST (more reliable than gcloud subcommand)
+ACCESS_TOKEN=$(gcloud auth print-access-token 2>/dev/null || true)
+DOC_AI_LOCATION="${GOOGLE_CLOUD_LOCATION:-eu}"
+DOC_AI_PROJECT="${PROJECT_ID:-$GOOGLE_CLOUD_PROJECT_ID}"
+if [ -n "$ACCESS_TOKEN" ] && [ -n "$DOC_AI_PROJECT" ]; then
+    DOC_AI_URL="https://$DOC_AI_LOCATION-documentai.googleapis.com/v1/projects/$DOC_AI_PROJECT/locations/$DOC_AI_LOCATION/processors"
+    DOC_AI_HTTP_CODE=$(curl -s -o /dev/null -w "%{http_code}" -H "Authorization: Bearer $ACCESS_TOKEN" "$DOC_AI_URL" || echo "000")
+    if [ "$DOC_AI_HTTP_CODE" = "200" ]; then
+        print_success "Document AI API test passed"
+    else
+        print_error "Document AI API test failed (HTTP $DOC_AI_HTTP_CODE)"
+        print_status "If you recently enabled the API, wait a minute and retry."
+        print_status "Ensure ADC is configured: gcloud auth application-default login"
+        print_status "Check that GOOGLE_CLOUD_LOCATION and project are correct in .env"
+    fi
+else
+    print_error "Document AI API test skipped: missing access token or project ID"
+fi
 
 # Test Storage
 gsutil ls "gs://$BUCKET_NAME" >/dev/null 2>&1 && \

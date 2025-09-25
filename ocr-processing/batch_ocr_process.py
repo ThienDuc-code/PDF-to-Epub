@@ -47,6 +47,17 @@ class DocumentAIOCR:
             pdfs = [line.strip() for line in result.stdout.split('\n') if line.strip()]
             if not pdfs:
                 raise ValueError(f"No PDFs found at {self.input_prefix}")
+            # If STEM is set, filter to just that file name
+            stem = os.getenv('STEM')
+            if stem:
+                filtered = []
+                for uri in pdfs:
+                    base = os.path.basename(uri).rsplit('.pdf', 1)[0]
+                    if base == stem:
+                        filtered.append(uri)
+                if not filtered:
+                    raise ValueError(f"No PDF found for STEM={stem} under {self.input_prefix}")
+                pdfs = filtered
             return pdfs
         except subprocess.CalledProcessError as e:
             raise RuntimeError(f"Failed to list PDFs: {e}")
@@ -81,7 +92,8 @@ class DocumentAIOCR:
         
         headers = {
             "Authorization": f"Bearer {self.access_token}",
-            "Content-Type": "application/json; charset=utf-8"
+            "Content-Type": "application/json; charset=utf-8",
+            "X-Goog-User-Project": self.project_id
         }
         
         response = requests.post(url, headers=headers, json=request_data)
@@ -97,7 +109,10 @@ class DocumentAIOCR:
     def _wait_for_completion(self, operation_name):
         """Wait for batch processing to complete"""
         url = f"https://{self.location}-documentai.googleapis.com/v1/{operation_name}"
-        headers = {"Authorization": f"Bearer {self.access_token}"}
+        headers = {
+            "Authorization": f"Bearer {self.access_token}",
+            "X-Goog-User-Project": self.project_id
+        }
         
         print(f"Batch started: {operation_name}")
         print("Waiting for completion", end="", flush=True)
@@ -194,6 +209,23 @@ class DocumentAIOCR:
         pdfs = self._get_pdf_files()
         print(f"Found {len(pdfs)} PDF files to process")
         
+        # If merged TXT already exists for STEM (for requested date or latest), skip
+        stem = os.getenv('STEM')
+        if stem:
+            # 1) Date-specific path
+            merged_txt_gcs = f"{self.output_prefix}/{self.date_prefix}/batch_clean/{stem}_ocr.txt"
+            exists = subprocess.run(['gsutil', 'ls', merged_txt_gcs], capture_output=True).returncode == 0
+            # 2) If not found, search latest by date
+            if not exists:
+                try:
+                    result = subprocess.run(['bash', '-lc', f"gsutil ls '{self.output_prefix}/*/batch_clean/{stem}_ocr.txt' 2>/dev/null | sort | tail -n1"], capture_output=True, text=True, check=True)
+                    latest = result.stdout.strip()
+                    if latest:
+                        print(f"Merged TXT already exists: {latest} — skipping OCR")
+                        return
+                except subprocess.CalledProcessError:
+                    pass
+
         # Create batch request
         request_data = self._create_batch_request(pdfs)
         
