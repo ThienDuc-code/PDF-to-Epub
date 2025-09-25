@@ -13,14 +13,14 @@ The setup script will:
 
 If you prefer manual setup or are not using macOS:
 
-#### Prerequisites
+## Prerequisites
 
 1. **Google Cloud Account** with Document AI API enabled
 2. **Google Cloud SDK** (`gcloud`) installed and authenticated
 3. **Python 3.7+** with pip
 4. **jq** (JSON processor) - will be installed automatically if missing
 
-#### Google Cloud Setup
+## Google Cloud Setup
 
 1. **Create a Google Cloud Project** and enable the Document AI API
 2. **Create a Document AI Processor** (must be done through Google Cloud Console):
@@ -42,7 +42,7 @@ If you prefer manual setup or are not using macOS:
 ./find_processor_id.sh
 ```
 
-### Python Environment Setup
+## Python Environment Setup
 
 1. **Install Python dependencies**:
    ```bash

@@ -9,7 +9,7 @@ This is a set of Python scripts to convert scanned PDF books to EPUB. It uses th
 For macOS users, we provide an automated setup script that handles everything:
 
 ```bash
-chmod +x setup_macos.sh pdf_to_epub.sh
+chmod +x *.sh
 ./setup_macos.sh
 ```
 
@@ -33,3 +33,6 @@ This will:
 7. Save the EPUB in the `output/` folder
 
 For a detailed description of the different parts of this project and what they do, see [this overview](docs/overview.md).
+
+## Contributors
+Totally vibe coded by [br Thien Duc](https://github.com/ThienDuc-code) and [br Duc Pho](https://github.com/ducpho).
