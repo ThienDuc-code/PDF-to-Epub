@@ -17,8 +17,15 @@ load_dotenv()
 class DownloadTxtFiles:
     def __init__(self):
         self.date_prefix = os.getenv('DATE_PREFIX', datetime.now().strftime('%Y-%m-%d'))
-        self.src_prefix = os.getenv('SRC_PREFIX', f"gs://pdf-ocr-books/docai-output/{self.date_prefix}/batch_clean/")
-        self.local_dir = Path.home() / "batch_clean_txts"
+        output_prefix = os.getenv('OUTPUT_PREFIX')
+        # Prefer OUTPUT_PREFIX if available, otherwise fall back to legacy bucket
+        default_src = f"{output_prefix}/{self.date_prefix}/batch_clean/" if output_prefix else f"gs://pdf-ocr-books/docai-output/{self.date_prefix}/batch_clean/"
+        self.src_prefix = os.getenv('SRC_PREFIX', default_src)
+        self.stem = os.getenv('STEM')
+        # Write under project temp folder when available
+        project_temp = Path.cwd() / "temp"
+        project_temp.mkdir(exist_ok=True)
+        self.local_dir = project_temp / "batch_clean_txts"
         
     def download_and_package(self):
         """Download TXT files and package them into a zip file"""
@@ -32,15 +39,29 @@ class DownloadTxtFiles:
         
         # Copy TXT files from GCS
         try:
-            subprocess.run(['gsutil', '-m', 'cp', f"{self.src_prefix}*.txt", str(self.local_dir)], 
+            # Batch output stores TXT inside one-level subfolders; copy those
+            pattern = f"{self.src_prefix}*/*.txt"
+            subprocess.run(['gsutil', '-m', 'cp', pattern, str(self.local_dir)], 
                          check=True, capture_output=True)
         except subprocess.CalledProcessError as e:
             print(f"Error copying files: {e}")
-            return False
+            # Do not return here; we might still have a root-level merged TXT
+
+        # Also try to pull a root-level merged TXT for the stem, if known
+        if self.stem:
+            root_txt = f"{self.src_prefix}{self.stem}_ocr.txt"
+            try:
+                subprocess.run(['gsutil', 'cp', root_txt, str(self.local_dir)], check=True, capture_output=True)
+            except subprocess.CalledProcessError:
+                # It's ok if it doesn't exist
+                pass
         
         # Count downloaded files
         txt_files = list(self.local_dir.glob('*.txt'))
         print(f"Downloaded {len(txt_files)} TXT files")
+        if not txt_files:
+            print("No TXT files found to download. Check SRC_PREFIX and date.")
+            return False
         
         # Package into zip for easy download
         print("==> Packaging into zip for easy download ...")

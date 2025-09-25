@@ -2,239 +2,34 @@
 
 Make the wisdom of the world readable.
 
-This is a set of Python scripts to convert scanned PDF books to EPUB. It uses the Google Cloud Document AI OCR API to convert scanned PDFs to text and then performs cleanup and enhancements in Python.
+This is a set of Python scripts to convert scanned PDF books to EPUB. It uses the [Google's Document AI](https://cloud.google.com/document-ai) to convert scanned PDFs to text and then performs cleanup and enhancements in Python.
 
-## Overview
-
-The project consists of two main parts:
-1. **OCR Processing Scripts** (`scripts/` folder) - Convert scanned PDFs to text using Google Cloud Document AI
-2. **Text Processing Scripts** (root folder) - Clean up and format the OCR text, then convert to EPUB
-
-## OCR Processing Scripts
-
-The `scripts/` folder contains Python scripts converted from the original Google Cloud Shell scripts:
-
-### 1. Batch OCR Process
-- **`batch_ocr_process.py`** - Basic batch OCR processing
-- **`batch_ocr_with_page_breaks.py`** - Enhanced version with page breaks and language hints
-
-### 2. Text Merging Scripts
-- **`merge_all_books.py`** - Merge OCR results from all volumes
-- **`merge_one_book.py`** - Merge OCR results from a single volume
-- **`merge_json_to_txt.py`** - Alternative merging approach
-
-### 3. Download Script
-- **`download_txt_files.py`** - Download processed text files and package them
-
-## Setup
-
-### Quick Setup (macOS)
+## Install
 
 For macOS users, we provide an automated setup script that handles everything:
 
 ```bash
+chmod +x setup_macos.sh pdf_to_epub.sh
 ./setup_macos.sh
 ```
 
-This script will:
-- Install Homebrew (if not present)
-- Install Python 3 and pip
-- Install Google Cloud SDK
-- Install required Python packages
-- Set up Google Cloud authentication
-- Guide you through creating a Document AI processor
-- Create Google Cloud Storage bucket
-- Configure your `.env` file with all settings
-- Test your setup
+If you're not on macOS or don't want to use Homebrew, please see [manual setup](docs/manual-setup.md).
 
-**That's it!** The script handles all the prerequisites and configuration automatically.
+## Quick Start
 
-### Manual Setup
-
-If you prefer manual setup or are not using macOS:
-
-#### Prerequisites
-
-1. **Google Cloud Account** with Document AI API enabled
-2. **Google Cloud SDK** (`gcloud`) installed and authenticated
-3. **Python 3.7+** with pip
-4. **jq** (JSON processor) - will be installed automatically if missing
-
-#### Google Cloud Setup
-
-1. **Create a Google Cloud Project** and enable the Document AI API
-2. **Create a Document AI Processor** (must be done through Google Cloud Console):
-   - Go to: https://console.cloud.google.com/ai/document-ai/processors
-   - Click 'Create Processor'
-   - Select 'OCR Processor'
-   - Choose location: 'eu' (Europe)
-   - Give it a name like 'PDF-OCR-Processor'
-   - Click 'Create'
-   - Copy the processor ID from the URL or processor details
-3. **Create a Cloud Storage bucket** for your PDFs and output files
-4. **Authenticate with Google Cloud**:
-   ```bash
-   gcloud auth login
-   gcloud auth application-default login
-   ```
-
-**Helper Script**: If you need help finding your processor ID after creating it, you can run:
-```bash
-./find_processor_id.sh
-```
-
-### Python Environment Setup
-
-1. **Install Python dependencies**:
-   ```bash
-   pip install -r requirements.txt
-   ```
-
-2. **Configure environment variables**:
-   ```bash
-   cp env.template .env
-   ```
-   
-   Edit `.env` with your actual values:
-   ```bash
-   # Required settings
-   GOOGLE_CLOUD_PROJECT_ID=your-project-id-here
-   GOOGLE_CLOUD_PROCESSOR_VERSION=projects/YOUR_PROJECT_NUMBER/locations/eu/processors/YOUR_PROCESSOR_ID/processorVersions/YOUR_VERSION
-   INPUT_PREFIX=gs://your-bucket-name/your-pdf-folder
-   OUTPUT_PREFIX=gs://your-bucket-name/docai-output
-   
-   # Optional settings
-   GOOGLE_CLOUD_LOCATION=eu
-   LANGUAGE_HINTS=en,fr,it,la
-   ```
-
-## Usage
-
-### Step 1: Upload PDFs to Cloud Storage
-
-Upload your scanned PDF files to the bucket path specified in `INPUT_PREFIX`:
-```bash
-gsutil -m cp *.pdf gs://your-bucket-name/your-pdf-folder/
-```
-
-### Step 2: Run OCR Processing
-
-Choose one of the OCR scripts based on your needs:
-
-**Basic OCR (recommended for most cases)**:
-```bash
-python3 ocr-processing/batch_ocr_process.py
-```
-
-**Enhanced OCR with page breaks and language hints**:
-```bash
-python3 ocr-processing/batch_ocr_with_page_breaks.py
-```
-
-### Step 3: Merge OCR Results
-
-**Merge all volumes**:
-```bash
-python3 ocr-processing/merge_all_books.py
-```
-
-**Merge a specific volume**:
-```bash
-python3 ocr-processing/merge_one_book.py HOL_Vol1
-```
-
-### Step 4: Download Processed Text
+After running the setup script, you can convert any PDF to EPUB with this command:
 
 ```bash
-python3 ocr-processing/download_txt_files.py
+./pdf_to_epub.sh your_book.pdf
 ```
 
-Then download the zip file:
-```bash
-cloudshell download batch_clean_txts.zip
-```
+This will:
+1. Check if the PDF exists on Google Cloud Storage (upload if needed)
+2. Run OCR processing using Google Cloud Document AI
+3. Merge OCR results into text files
+4. Download processed text
+5. Clean up and format the text
+6. Create an EPUB file
+7. Save the EPUB in the `output/` folder
 
-### Step 5: Text Processing and EPUB Creation
-
-Use the existing Python scripts in the root directory:
-
-1. **Clean up OCR text**:
-   ```bash
-   python3 text-processing/Step1_ocr_cleanup_v6.py
-   ```
-
-2. **Format the text**:
-   ```bash
-   python3 text-processing/Step2_formatting1_v2.py
-   ```
-
-3. **Further formatting**:
-   ```bash
-   python3 text-processing/step3_formating2_v2.py
-   ```
-
-4. **Create EPUB**:
-   ```bash
-   python3 text-processing/Step4_create_epub.py
-   ```
-
-## Configuration Options
-
-### Environment Variables
-
-- `GOOGLE_CLOUD_PROJECT_ID` - Your Google Cloud project ID
-- `GOOGLE_CLOUD_LOCATION` - Document AI location (default: eu)
-- `GOOGLE_CLOUD_PROCESSOR_VERSION` - Full processor version path
-- `INPUT_PREFIX` - GCS path to your PDF files
-- `OUTPUT_PREFIX` - GCS path for OCR output
-- `LANGUAGE_HINTS` - Comma-separated language codes for better OCR
-- `DATE_PREFIX` - Override date prefix (defaults to current date)
-- `STEM` - Specific volume name for single book operations
-
-### Language Hints
-
-The `LANGUAGE_HINTS` setting helps improve OCR accuracy. Common values:
-- `en` - English
-- `fr` - French  
-- `it` - Italian
-- `la` - Latin
-- `de` - German
-- `es` - Spanish
-
-## Troubleshooting
-
-### Common Issues
-
-1. **Authentication errors**: Make sure you're logged in with `gcloud auth login`
-2. **Permission errors**: Ensure your account has Document AI and Cloud Storage permissions
-3. **Processor not found**: Verify your processor version path in the `.env` file
-4. **No PDFs found**: Check that your `INPUT_PREFIX` path contains PDF files
-
-### Getting Help
-
-- Check Google Cloud Console for Document AI processor status
-- Verify Cloud Storage bucket permissions
-- Review the script output for specific error messages
-
-## File Structure
-
-```
-manjushri/
-├── ocr-processing/                   # OCR processing scripts
-│   ├── batch_ocr_process.py         # Basic OCR processing
-│   ├── batch_ocr_with_page_breaks.py # Enhanced OCR with page breaks
-│   ├── merge_all_books.py           # Merge all volumes
-│   ├── merge_one_book.py            # Merge single volume
-│   ├── merge_json_to_txt.py         # Alternative merge approach
-│   └── download_txt_files.py        # Download processed files
-├── text-processing/                  # Text cleanup and EPUB creation
-│   ├── Step1_ocr_cleanup_v6.py      # Text cleanup
-│   ├── Step2_formatting1_v2.py      # Text formatting
-│   ├── step3_formating2_v2.py       # Additional formatting
-│   └── Step4_create_epub.py         # EPUB creation
-├── setup_macos.sh                    # Automated macOS setup script
-├── find_processor_id.sh              # Helper to find Document AI processor ID
-├── requirements.txt                  # Python dependencies
-├── env.template                      # Environment configuration template
-└── readme.md                         # This file
-```
+For a detailed description of the different parts of this project and what they do, see [this overview](docs/overview.md).

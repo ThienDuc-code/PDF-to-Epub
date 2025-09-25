@@ -40,6 +40,15 @@ class MergeOneBook:
         # Create local directory for this volume
         local_dir = self.scratch_dir / self.stem
         local_dir.mkdir(exist_ok=True)
+
+        # If merged file already exists in GCS, skip merging
+        merged_txt_gcs = f"{self.output_prefix}/{self.stem}_ocr.txt"
+        try:
+            subprocess.run(['gsutil', 'ls', merged_txt_gcs], check=True, capture_output=True)
+            print(f"Merged TXT already exists: {merged_txt_gcs} — skipping merge")
+            return True
+        except subprocess.CalledProcessError:
+            pass
         
         # Pull all shards for this volume (handles nested shard folders like /0/, /1/, …)
         try:
@@ -89,7 +98,22 @@ class MergeOneBook:
         except subprocess.CalledProcessError as e:
             print(f"Error uploading to GCS: {e}")
             return False
-        
+ 
+        # Also write/update a hash-based index marker if PDF_HASH is provided in env
+        pdf_hash = os.getenv('PDF_HASH')
+        if pdf_hash:
+            marker_local = self.scratch_dir / f"{pdf_hash}.meta"
+            with open(marker_local, 'w') as mf:
+                mf.write(f"date_prefix={self.date_prefix}\n")
+                mf.write(f"stem={self.stem}\n")
+            index_prefix = os.getenv('OUTPUT_PREFIX', str(self.output_prefix))
+            marker_gcs = f"{index_prefix}/index/by-hash/{pdf_hash}.meta"
+            try:
+                subprocess.run(['gsutil', 'cp', str(marker_local), marker_gcs], check=True)
+                print(f"Indexed hash marker -> {marker_gcs}")
+            except subprocess.CalledProcessError:
+                print("Warning: failed to upload hash marker (non-fatal)")
+
         # Clean up local files
         output_file.unlink(missing_ok=True)
         clean_file.unlink(missing_ok=True)

@@ -75,7 +75,7 @@ else
     echo "2. You have created a processor in the Google Cloud Console"
     echo "3. The processor is in the 'eu' location"
     echo
-    echo "Create a processor at: https://console.cloud.google.com/ai/document-ai/processors"
+    echo "Create a processor at: https://console.cloud.google.com/ai/document-ai/processor-library"
 fi
 
 echo

@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # Wrapper around Step1 to preserve standalone 'CHAPTER I' if removed.
-import argparse, subprocess, sys, re, pathlib, json
+import argparse, subprocess, sys, re, pathlib, json, os
 
 def _apply_french_utf8_latin1_fixes(text: str) -> str:
     """
@@ -31,17 +31,37 @@ def _apply_french_utf8_latin1_fixes(text: str) -> str:
     for bad, good in mapping.items():
         pat = re.compile(rf"(?:(?<=\w){re.escape(bad)}|{re.escape(bad)}(?=\w))", flags=re.UNICODE)
         text = pat.sub(good, text)
-    return textap = argparse.ArgumentParser()
+    return text
+
+ap = argparse.ArgumentParser()
 ap.add_argument("infile")
 ap.add_argument("outfile")
 ap.add_argument("--log", default=None)
 ap.add_argument("--rtf", action="store_true")
 args = ap.parse_args()
 
+# Resolve repository root and local path to original Step1 script
+script_dir = pathlib.Path(__file__).resolve().parent
+repo_root = script_dir.parent
+legacy_dir = repo_root / "older versions "
+v3_patched = legacy_dir / "Step1_ocr_cleanup_v3_patched.py"
+v5_script = legacy_dir / "Step1_ocr_cleanup_v5.py"
+
+step1_path = None
+if v3_patched.exists():
+    step1_path = str(v3_patched)
+elif v5_script.exists():
+    step1_path = str(v5_script)
+else:
+    print("Error: Could not locate original Step1 script in repository.")
+    print(f"Tried: {v3_patched} and {v5_script}")
+    sys.exit(2)
+
 # Run the original Step1
 ret = subprocess.run(
-    ["python3", "/mnt/data/Step1_ocr_cleanup_v3_patched.py",
-     args.infile, args.outfile] + (["--log", args.log] if args.log else []) + (["--rtf"] if args.rtf else []),
+    ["python3", step1_path, args.infile, args.outfile]
+    + (["--log", args.log] if args.log else [])
+    + (["--rtf"] if args.rtf else []),
     check=True, capture_output=True, text=True
 )
 
@@ -72,11 +92,12 @@ print("Wrapped Step1 complete (CHAPTER I preservation).")
 
 
 # Wrapper added in v5 to ensure French mojibake is fixed
+# If the underlying script exposes clean_ocr_text, wrap it; otherwise ignore
 try:
-    _original_clean_ocr_text = clean_ocr_text
-    def clean_ocr_text(text):
+    _original_clean_ocr_text = clean_ocr_text  # type: ignore[name-defined]
+    def clean_ocr_text(text):  # type: ignore[func-assign]
         text = _apply_french_utf8_latin1_fixes(text)
         return _original_clean_ocr_text(text)
-except NameError:
-    # If original wasn't defined (unexpected), just expose the helper
+except Exception:
+    # Not all Step1 variants define clean_ocr_text; it's optional.
     pass
